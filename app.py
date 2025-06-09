@@ -141,35 +141,44 @@ if "detection_running" not in st.session_state:
     st.session_state["detection_running"] = False
 if "result_summary" not in st.session_state:
     st.session_state["result_summary"] = ""
+if "stop_pressed" not in st.session_state:
+    st.session_state["stop_pressed"] = False
 
 st.sidebar.title("🔧 설정")
 focus_min = st.sidebar.number_input("📚 Focus Time (minutes)", 5, 60, 25)
 break_min = st.sidebar.number_input("🛌 Break Time (minutes)", 1, 30, 5)
+
+container_timer = st.empty()
+container_video = st.empty()
 
 stop_flag = {'stop': False}
 
 def stop_signal():
     return stop_flag['stop']
 
-container_timer = st.empty()
-container_video = st.empty()
+col1, col2 = st.columns([1, 1])
 
-if not st.session_state["detection_running"]:
-    if st.button("▶ Start"):
-        stop_flag['stop'] = False
-        st.session_state["detection_running"] = True
-        st.subheader("🎥 Object Detection Running...")
-        run_detection_with_timer(focus_min * 60, container_timer, container_video, stop_signal)
-        if not stop_flag['stop']:
-            st.toast("🔔 Focus complete! Time for a break.", icon="🍅")
-            run_detection_with_timer(break_min * 60, container_timer, container_video, stop_signal)
-            st.toast("⏰ Break is over!", icon="⏰")
-else:
-    if st.button("⏹ Stop"):
-        stop_flag['stop'] = True
-        st.session_state["detection_running"] = False
-        container_timer.empty()
-        container_video.empty()
+with col1:
+    if not st.session_state["detection_running"]:
+        if st.button("▶ Start"):
+            st.session_state["detection_running"] = True
+            st.session_state["stop_pressed"] = False
+            stop_flag['stop'] = False
+            st.subheader("🎥 Object Detection Running...")
+            run_detection_with_timer(focus_min * 60, container_timer, container_video, stop_signal)
+            if not stop_flag['stop']:
+                st.toast("🔔 Focus complete! Time for a break.", icon="🍅")
+                run_detection_with_timer(break_min * 60, container_timer, container_video, stop_signal)
+                st.toast("⏰ Break is over!", icon="⏰")
+
+with col2:
+    if st.session_state["detection_running"]:
+        if st.button("⏹ Stop"):
+            stop_flag['stop'] = True
+            st.session_state["stop_pressed"] = True
+            st.session_state["detection_running"] = False
+            container_timer.empty()
+            container_video.empty()
 
 if st.session_state["result_summary"]:
     st.text_area("🧠 상태 요약", st.session_state["result_summary"], height=300)
