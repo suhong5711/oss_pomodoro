@@ -99,11 +99,9 @@ class DetectionSession:
                 break
 
             results = model(frame, conf=CONFIDENCE_THRESHOLD, iou=IOU_THRESHOLD)[0]
-            detected_labels = set()
             for box in results.boxes:
                 cls_id = int(box.cls.item())
                 cls_name = names[cls_id]
-                detected_labels.add(cls_name)
 
                 xmin, ymin, xmax, ymax = map(int, box.xyxy[0].tolist())
                 color = (255, 255, 255)
@@ -137,8 +135,8 @@ class DetectionSession:
                     self.status_start_time = now
                 self.remaining = int(end_time - now)
 
-            self.container_timer.html(draw_circle(self.remaining, self.total), height=260, scrolling=False)
-
+            self.container_timer.empty()
+            self.container_timer.components.html(draw_circle(self.remaining, self.total), height=260)
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             self.container_video.image(rgb_frame, channels="RGB")
             time.sleep(0.03)
@@ -169,7 +167,6 @@ class DetectionSession:
         self.status_start_time = time.time()
         self.log = ""
 
-
 # --- Streamlit UI ---
 st.title("🎓 AI Study Timer")
 session = DetectionSession()
@@ -180,7 +177,10 @@ with st.sidebar:
     break_min = st.number_input("🛌 Break Time (minutes)", 1, 30, 5)
 
     if st.button("▶ Start"):
-        session.start(focus_min * 60, st.empty(), st.empty())
+        col1, col2 = st.columns([1, 2])
+        container_timer = col1.empty()
+        container_video = col2.empty()
+        session.start(focus_min * 60, container_timer, container_video)
 
     if st.button("⏸ Pause / Resume"):
         session.pause()
@@ -191,10 +191,3 @@ with st.sidebar:
     if st.button("⏹ Stop"):
         session.stop()
         st.text_area("🧠 상태 요약", session.log, height=300)
-
-container_timer = st.empty()
-container_video = st.empty()
-
-if session.running:
-    session.container_timer = container_timer
-    session.container_video = container_video
