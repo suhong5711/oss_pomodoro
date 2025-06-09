@@ -38,7 +38,7 @@ def draw_circle(remaining, total):
     </div>"""
     return html
 
-def format_status_summary(status_periods, total_times):
+def format_status_summary(status_periods, total_times, start_time, end_time):
     logs = []
     logs.append("\n[상태변화]")
     for state, start, end, duration in status_periods:
@@ -49,14 +49,19 @@ def format_status_summary(status_periods, total_times):
     for k, v in total_times.items():
         percentage = (v / total_time_all) * 100 if total_time_all else 0
         logs.append(f"{k}: {round(v, 2)}초 ({round(percentage, 1)}%)")
+
+    logs.append(f"\n🕒 실행 시작 시간: {start_time}")
+    logs.append(f"🕒 실행 종료 시간: {end_time}")
+    logs.append(f"⏱️ 총 실행 시간: {round((end_time - start_time).total_seconds(), 2)}초")
     return '\n'.join(logs)
 
-def run_detection_with_timer(duration_sec, container_timer, container_video):
+def run_detection_with_timer(duration_sec, container_timer, container_video, stop_signal):
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         st.error("❌ 웹캠을 열 수 없습니다.")
         return
 
+    start_time = datetime.now()
     end_time = time.time() + duration_sec
     last_hand_time = 0
     last_phone_time = 0
@@ -68,6 +73,9 @@ def run_detection_with_timer(duration_sec, container_timer, container_video):
     names = model.names
 
     while time.time() < end_time:
+        if stop_signal():
+            break
+
         ret, frame = cap.read()
         if not ret:
             break
@@ -120,25 +128,34 @@ def run_detection_with_timer(duration_sec, container_timer, container_video):
     duration = round(now - status_start_time, 2)
     total_times[current_status] += duration
     status_periods.append((current_status, str(datetime.fromtimestamp(status_start_time)), str(datetime.fromtimestamp(now)), duration))
+    end_time_dt = datetime.now()
     st.audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg")
-    summary = format_status_summary(status_periods, total_times)
+    summary = format_status_summary(status_periods, total_times, start_time, end_time_dt)
     st.text_area("🧠 상태 요약", summary, height=300)
 
 # --- Streamlit UI ---
 st.title("🎓 AI Study Timer")
 
 st.sidebar.title("🔧 설정")
-focus_min = st.sidebar.number_input("📚 Focus Time (minutes)", 1, 60, 25)
+focus_min = st.sidebar.number_input("📚 Focus Time (minutes)", 5, 60, 25)
 break_min = st.sidebar.number_input("🛌 Break Time (minutes)", 1, 30, 5)
 
+stop_flag = {'stop': False}
+
+def stop_signal():
+    return stop_flag['stop']
+
 if st.button("▶ Start"):
+    stop_flag['stop'] = False
     st.subheader("🎥 Object Detection Running...")
-    col1, col2 = st.columns([1, 2])
-    container_timer = col1.empty()
-    container_video = col2.empty()
+    container_timer = st.empty()
+    container_video = st.empty()
 
-    run_detection_with_timer(focus_min * 60, container_timer, container_video)
-    st.toast("🔔 Focus complete! Time for a break.", icon="🍅")
+    run_detection_with_timer(focus_min * 60, container_timer, container_video, stop_signal)
+    if not stop_flag['stop']:
+        st.toast("🔔 Focus complete! Time for a break.", icon="🍅")
+        run_detection_with_timer(break_min * 60, container_timer, container_video, stop_signal)
+        st.toast("⏰ Break is over!", icon="⏰")
 
-    run_detection_with_timer(break_min * 60, container_timer, container_video)
-    st.toast("⏰ Break is over!", icon="⏰")
+if st.button("⏹ Stop"):
+    stop_flag['stop'] = True
