@@ -131,10 +131,16 @@ def run_detection_with_timer(duration_sec, container_timer, container_video, sto
     end_time_dt = datetime.now()
     st.audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg")
     summary = format_status_summary(status_periods, total_times, start_time, end_time_dt)
-    st.text_area("🧠 상태 요약", summary, height=300)
+    st.session_state["result_summary"] = summary
+    st.session_state["detection_running"] = False
 
 # --- Streamlit UI ---
 st.title("🎓 AI Study Timer")
+
+if "detection_running" not in st.session_state:
+    st.session_state["detection_running"] = False
+if "result_summary" not in st.session_state:
+    st.session_state["result_summary"] = ""
 
 st.sidebar.title("🔧 설정")
 focus_min = st.sidebar.number_input("📚 Focus Time (minutes)", 5, 60, 25)
@@ -145,17 +151,25 @@ stop_flag = {'stop': False}
 def stop_signal():
     return stop_flag['stop']
 
-if st.button("▶ Start"):
-    stop_flag['stop'] = False
-    st.subheader("🎥 Object Detection Running...")
-    container_timer = st.empty()
-    container_video = st.empty()
+container_timer = st.empty()
+container_video = st.empty()
 
-    run_detection_with_timer(focus_min * 60, container_timer, container_video, stop_signal)
-    if not stop_flag['stop']:
-        st.toast("🔔 Focus complete! Time for a break.", icon="🍅")
-        run_detection_with_timer(break_min * 60, container_timer, container_video, stop_signal)
-        st.toast("⏰ Break is over!", icon="⏰")
+if not st.session_state["detection_running"]:
+    if st.button("▶ Start"):
+        stop_flag['stop'] = False
+        st.session_state["detection_running"] = True
+        st.subheader("🎥 Object Detection Running...")
+        run_detection_with_timer(focus_min * 60, container_timer, container_video, stop_signal)
+        if not stop_flag['stop']:
+            st.toast("🔔 Focus complete! Time for a break.", icon="🍅")
+            run_detection_with_timer(break_min * 60, container_timer, container_video, stop_signal)
+            st.toast("⏰ Break is over!", icon="⏰")
+else:
+    if st.button("⏹ Stop"):
+        stop_flag['stop'] = True
+        st.session_state["detection_running"] = False
+        container_timer.empty()
+        container_video.empty()
 
-if st.button("⏹ Stop"):
-    stop_flag['stop'] = True
+if st.session_state["result_summary"]:
+    st.text_area("🧠 상태 요약", st.session_state["result_summary"], height=300)
