@@ -7,7 +7,6 @@ import pathlib
 import numpy as np
 from datetime import datetime
 from ultralytics import YOLO
-from threading import Thread
 
 if pathlib.os.name == 'nt':
     pathlib.PosixPath = pathlib.WindowsPath
@@ -52,142 +51,94 @@ def format_status_summary(status_periods, total_times):
         logs.append(f"{k}: {round(v, 2)}초 ({round(percentage, 1)}%)")
     return '\n'.join(logs)
 
-class DetectionSession:
-    def __init__(self):
-        self.running = False
-        self.paused = False
-        self.cap = None
-        self.remaining = 0
-        self.total = 0
-        self.status_periods = []
-        self.total_times = {'STUDYING': 0, 'PLAYING': 0, 'NOTHING': 0}
-        self.current_status = 'NOTHING'
-        self.status_start_time = time.time()
-        self.last_hand_time = 0
-        self.last_phone_time = 0
-        self.container_video = None
-        self.container_timer = None
-        self.log = ""
+def run_detection_with_timer(duration_sec, container_timer, container_video):
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        st.error("❌ 웹캠을 열 수 없습니다.")
+        return
 
-    def start(self, total, container_timer, container_video):
-        self.running = True
-        self.paused = False
-        self.remaining = total
-        self.total = total
-        self.container_video = container_video
-        self.container_timer = container_timer
-        Thread(target=self.run).start()
+    end_time = time.time() + duration_sec
+    last_hand_time = 0
+    last_phone_time = 0
+    prev_time = time.time()
+    status_periods = []
+    total_times = {'STUDYING': 0, 'PLAYING': 0, 'NOTHING': 0}
+    current_status = 'NOTHING'
+    status_start_time = prev_time
+    names = model.names
 
-    def run(self):
-        self.cap = cv2.VideoCapture(0)
-        if not self.cap.isOpened():
-            st.error("❌ 웹캠을 열 수 없습니다.")
-            return
+    while time.time() < end_time:
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-        prev_time = time.time()
-        self.status_start_time = prev_time
-        names = model.names
-        end_time = time.time() + self.remaining
+        results = model(frame, conf=CONFIDENCE_THRESHOLD, iou=IOU_THRESHOLD)[0]
+        for box in results.boxes:
+            cls_id = int(box.cls.item())
+            cls_name = names[cls_id]
+            xmin, ymin, xmax, ymax = map(int, box.xyxy[0].tolist())
+            color = (255, 255, 255)
+            if cls_name == 'hand_with_pen':
+                color = (255, 0, 0)
+                last_hand_time = time.time()
+            elif cls_name == 'smartphone':
+                color = (0, 0, 255)
+                last_phone_time = time.time()
+            cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), color, 2)
+            cv2.putText(frame, cls_name, (xmin, max(0, ymin - 10)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
-        while self.running and self.remaining > 0:
-            if self.paused:
-                time.sleep(0.1)
-                continue
+        now = time.time()
+        if now - last_hand_time <= 2:
+            detected_state = 'STUDYING'
+        elif now - last_phone_time <= 1:
+            detected_state = 'PLAYING'
+        else:
+            detected_state = 'NOTHING'
 
-            ret, frame = self.cap.read()
-            if not ret:
-                break
+        if now - prev_time >= 1:
+            prev_time = now
+            if detected_state != current_status:
+                start_dt = datetime.fromtimestamp(status_start_time)
+                end_dt = datetime.fromtimestamp(now)
+                duration = round(now - status_start_time, 2)
+                status_periods.append((current_status, str(start_dt), str(end_dt), duration))
+                total_times[current_status] += duration
+                current_status = detected_state
+                status_start_time = now
 
-            results = model(frame, conf=CONFIDENCE_THRESHOLD, iou=IOU_THRESHOLD)[0]
-            for box in results.boxes:
-                cls_id = int(box.cls.item())
-                cls_name = names[cls_id]
+        remaining = int(end_time - time.time())
+        with container_timer:
+            components.html(draw_circle(remaining, duration_sec), height=260)
 
-                xmin, ymin, xmax, ymax = map(int, box.xyxy[0].tolist())
-                color = (255, 255, 255)
-                if cls_name == 'hand_with_pen':
-                    color = (255, 0, 0)
-                    self.last_hand_time = time.time()
-                elif cls_name == 'smartphone':
-                    color = (0, 0, 255)
-                    self.last_phone_time = time.time()
-                cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), color, 2)
-                cv2.putText(frame, cls_name, (xmin, max(0, ymin - 10)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        container_video.image(rgb_frame, channels="RGB")
+        time.sleep(0.03)
 
-            now = time.time()
-            if now - self.last_hand_time <= 2:
-                detected_state = 'STUDYING'
-            elif now - self.last_phone_time <= 1:
-                detected_state = 'PLAYING'
-            else:
-                detected_state = 'NOTHING'
-
-            if now - prev_time >= 1:
-                prev_time = now
-                if detected_state != self.current_status:
-                    start_dt = datetime.fromtimestamp(self.status_start_time)
-                    end_dt = datetime.fromtimestamp(now)
-                    duration = round(now - self.status_start_time, 2)
-                    self.status_periods.append((self.current_status, str(start_dt), str(end_dt), duration))
-                    self.total_times[self.current_status] += duration
-                    self.current_status = detected_state
-                    self.status_start_time = now
-                self.remaining = int(end_time - now)
-
-            self.container_timer.empty()
-            self.container_timer.components.html(draw_circle(self.remaining, self.total), height=260)
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            self.container_video.image(rgb_frame, channels="RGB")
-            time.sleep(0.03)
-
-        self.cap.release()
-        self.running = False
-        st.audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg")
-        self.log = format_status_summary(self.status_periods, self.total_times)
-
-    def pause(self):
-        self.paused = not self.paused
-        if self.cap:
-            if self.paused:
-                self.cap.release()
-            else:
-                self.cap = cv2.VideoCapture(0)
-
-    def stop(self):
-        self.running = False
-        if self.cap:
-            self.cap.release()
-
-    def reset(self):
-        self.stop()
-        self.status_periods.clear()
-        self.total_times = {'STUDYING': 0, 'PLAYING': 0, 'NOTHING': 0}
-        self.current_status = 'NOTHING'
-        self.status_start_time = time.time()
-        self.log = ""
+    cap.release()
+    now = time.time()
+    duration = round(now - status_start_time, 2)
+    total_times[current_status] += duration
+    status_periods.append((current_status, str(datetime.fromtimestamp(status_start_time)), str(datetime.fromtimestamp(now)), duration))
+    st.audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg")
+    summary = format_status_summary(status_periods, total_times)
+    st.text_area("🧠 상태 요약", summary, height=300)
 
 # --- Streamlit UI ---
 st.title("🎓 AI Study Timer")
-session = DetectionSession()
 
-with st.sidebar:
-    st.header("🔧 설정")
-    focus_min = st.number_input("📚 Focus Time (minutes)", 5, 60, 25)
-    break_min = st.number_input("🛌 Break Time (minutes)", 1, 30, 5)
+st.sidebar.title("🔧 설정")
+focus_min = st.sidebar.number_input("📚 Focus Time (minutes)", 1, 60, 25)
+break_min = st.sidebar.number_input("🛌 Break Time (minutes)", 1, 30, 5)
 
-    if st.button("▶ Start"):
-        col1, col2 = st.columns([1, 2])
-        container_timer = col1.empty()
-        container_video = col2.empty()
-        session.start(focus_min * 60, container_timer, container_video)
+if st.button("▶ Start"):
+    st.subheader("🎥 Object Detection Running...")
+    col1, col2 = st.columns([1, 2])
+    container_timer = col1.empty()
+    container_video = col2.empty()
 
-    if st.button("⏸ Pause / Resume"):
-        session.pause()
+    run_detection_with_timer(focus_min * 60, container_timer, container_video)
+    st.toast("🔔 Focus complete! Time for a break.", icon="🍅")
 
-    if st.button("🔁 Reset"):
-        session.reset()
-
-    if st.button("⏹ Stop"):
-        session.stop()
-        st.text_area("🧠 상태 요약", session.log, height=300)
+    run_detection_with_timer(break_min * 60, container_timer, container_video)
+    st.toast("⏰ Break is over!", icon="⏰")
