@@ -154,33 +154,63 @@
 
 - 현재 YOLOv8n 및 YOLO11n 사용 → 개발 초반에는 지연이 없었지만, 기능 추가로 인한 전체 코드량(연산량)이 많아 일부 환경에서 딜레이 발생
 - 향후 MobileNet, ResNet 등의 경량 모델로 전환 예정
-- Streamlit 코드 구조 최적화도 고려 중
+- Streamlit 코드 구조 최적화도 고려 중  
 
+## ✅ 다른 IOT프로젝트와 연계
+
+- 다른 IOT 프로젝트 : 라즈베리파이에서 동작 가능한, 객체인식 기술을 활용한 공부시간 측정 및 알림 서비스
+- Playing 5초 이상 지속 시 푸시 알림 전송, 실행 후 결과 이메일 전송, 데이터 베이스를 활용하여 과거 이력 조회 기능
+- 향후 OSS 프로젝트와 IOT 프로젝트를 합쳐서 더 발전된 모습의 app 제작  
+[🔗 YouTube IOT 프로젝트 시연 영상 보기](https://youtu.be/3JRhURu_qpI)  
+![IOT 프로젝트 세럼 이미지](./images/image9.png)
+![IOT 프로젝트 외부 프로세스 이미지](./images/image10.png) 
 ---
 
 # ⚙️ 6. 실행 방법
 
-> ❗ GPU 사용 권장  
-> ❗ 웹캠 필수 ([웹캠 테스트 사이트](https://webcamtests.com/))
+> ❗ Nvidia-GPU 사용 권장 ([🔗 Nvidia GPU 드라이버 업데이트 사이트](https://www.nvidia.com/en-us/drivers/))  
+> ❗ 웹캠 필수 ([🔗 웹캠 테스트 사이트](https://webcamtests.com/))
 
-## 🪟 Windows
+## 🪟 Windows  
+conda 가상환경 설치(인공지능 사용을 위한 가상환경)  
+[🔗 conda 설치 사이트](https://www.anaconda.com/)  
 
 ```bash
 # Conda 환경 구성
 conda create -n opensw python=3.9 -y
 conda activate opensw
-python -m pip install --upgrade pip
+python -m pip install --upgrade pip  
+```  
 
+git 설치(git clone을 하기 위해 설치)  
+[🔗 git 설치 사이트](https://git-scm.com/downloads)  
+```bash
 # Git 설치 후 프로젝트 클론
 git clone https://github.com/suhong5711/oss_pomodoro.git
-cd oss_pomodoro
+```  
+Pytorch 설치(빠른 추론을 위한 GPU사용)  
+[🔗 pytorch 설치 사이트](https://pytorch.kr/get-started/locally/) 
+```bash
+#터미널에서 CUDA 버젼 확인
+nvidia-smi
+
+# (예시) Window CUDA 12.6 기준 PyTorch 설치 명령어, opensw 가상환경 안에서 설치할 것
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+```  
+
+실행  
+```bash
+# opensw 가상환경 안에서 설치할 것
 pip install -r requirements.txt
 
-# 모델 경로 확인 후 실행
+cd oss_pomodoro
+
+# app.py에서 모델 경로 수정 후 실행
 streamlit run app.py
 ```
 
 ## 🐧 Linux
+venv 가상환경 & Git설치  
 
 ```bash
 # venv 환경 구성
@@ -192,9 +222,23 @@ source opensw/bin/activate
 sudo apt update
 sudo apt install git
 git clone https://github.com/suhong5711/oss_pomodoro.git
+```
+
+Pytorch 설치(빠른 추론을 위한 GPU사용)  
+[🔗 pytorch 설치 사이트](https://pytorch.kr/get-started/locally/) 
+```bash
+#터미널에서 CUDA 버젼 확인
+nvidia-smi
+
+# (예시) Linux CUDA 12.6 기준 PyTorch 설치 명령어, opensw 가상환경 안에서 설치할 것
+pip3 install torch torchvision torchaudio
+```
+
+실행
+```bash
 cd oss_pomodoro
 pip install -r requirements.txt
 
-# 모델 경로 확인 후 실행
+# app.py에서 모델 경로 수정 후 실행
 streamlit run app.py
 ```
