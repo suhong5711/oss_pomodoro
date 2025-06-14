@@ -110,10 +110,10 @@
 
 | 이름 | 역할 |
 |------|------|
-| 정재호 | AI 학습 (main), GUI 코딩 (sub) |
-| 심용준 | Git 관리 (main), GUI 코딩 (sub) |
-| 박규빈 | GUI 코딩 (main), Git 관리 (sub) |
-| 전수홍 | 발표 자료 및 README 작성 (main), GUI 코딩 (sub) |
+| 정재호 | AI 학습 (main), GUI 코딩 (sub), 발표 자료 및 README 작성 (sub) |
+| 심용준 | GUI 코딩 (main), Git 관리 (sub) |
+| 박규빈 | 발표 자료 및 README 작성 (main), GUI 코딩 (sub) |
+| 전수홍 | Git 관리 (main), GUI 코딩 (sub) |
 
 ## 🔨 3.2 개발 과정
 
