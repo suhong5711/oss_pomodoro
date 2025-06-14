@@ -1,19 +1,24 @@
+#ai_pomodoro_windows.py
 import streamlit as st
-import streamlit.components.v1 as components
 import time
 import cv2
-import pathlib
+from pathlib import Path
 import numpy as np
 import sys
 from datetime import datetime
+import torch
 from ultralytics import YOLO
+from streamlit import components
 
-if sys.platform == 'win32':
-    pathlib.PosixPath = pathlib.WindowsPath
+# ================= GPU 및 모델 로딩 =================
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+print(f"[INFO] YOLO 디바이스: {DEVICE}")
 
-MODEL_PATH = 'C:/aiclass/opensw_v8/openswbest_11n.pt'
-model = YOLO(MODEL_PATH)
-CONFIDENCE_THRESHOLD = 0.4
+# Windows 용 경로 (절대 경로 or 상대 경로)
+MODEL_PATH = Path("/openswlast_11n.pt")  # 경로 넣으실 때, \를 /로 바꿔야 할 겁니다.
+model = YOLO(str(MODEL_PATH)).to(DEVICE)
+
+CONFIDENCE_THRESHOLD = 0.5
 IOU_THRESHOLD = 0.6
 FRAME_SKIP = 3
 
@@ -86,7 +91,7 @@ init_state()
 
 # Sidebar 설정
 st.sidebar.title("설정")
-focus_sec = st.sidebar.number_input("지비중 시간 (초)", 10, 3600, 20)
+focus_sec = st.sidebar.number_input("집중 시간 (초)", 10, 3600, 20)
 break_sec = st.sidebar.number_input("쉬는 시간 (초)", 1, 1800, 5)
 total_sets = st.sidebar.number_input("세트 수", 1, 10, 2)
 st.sidebar.text_area("📜 오늘 할 일 목록")
@@ -94,9 +99,13 @@ st.session_state.mode = st.sidebar.selectbox(
     "📲 감지 모드",
     ["기본", "폰 감지 시 정지", "스마트폰 감지 시 알림", "펜만 감지 시 작동"]
 )
+st.sidebar.markdown("---")
+st.sidebar.markdown("ℹ️ **버튼이 잘 실행되지 않는다면 여러 번 눌러보세요.**")
+
+message_placeholder = st.empty()
 
 # 컨트롤 버튼
-btn1, btn2, btn3, btn4 = st.columns([1, 1, 1, 1])
+btn1, btn2, btn3, btn4 = st.columns([1, 1, 1, 2])
 with btn1:
     if st.button("▶ 시작"):
         st.session_state.running = True
@@ -115,34 +124,33 @@ with btn1:
         st.session_state.last_alert_time = 0
 
 with btn2:
-    if st.button("⏯ 정지/재시작"):
+    if st.button("⏯ 일시정지 / 재시작"):
         if st.session_state.running:
             st.session_state.running = False
             st.session_state.paused = True
         elif st.session_state.paused and st.session_state.time_left > 0:
             st.session_state.running = True
             st.session_state.paused = False
+            st.rerun()
 
 with btn3:
-    if st.button("🔄 초기화"):
+    if st.button("🔄 전체 초기화"):
         st.session_state.running = False
         st.session_state.paused = False
         st.session_state.set_index = 1
         st.session_state.cycle_type = "focus"
         st.session_state.time_left = focus_sec
-        st.session_state.stop_flag = False
         st.session_state.completed = False
+        message_placeholder.success("🔄 세트와 타이머가 초기화되었습니다. [▶ 시작] 버튼을 눌러주세요.")
 
 with btn4:
-    if st.button("⏹ 중지/재시작"):
-        if not st.session_state.stop_flag:
-            st.session_state.running = False
-            st.session_state.paused = False
-            st.session_state.stop_flag = True
-        else:
-            st.session_state.running = True
-            st.session_state.paused = False
-            st.session_state.stop_flag = False
+    if st.button("⏲ 타이머 중지 (리셋)"):
+        st.session_state.time_left = focus_sec if st.session_state.cycle_type == "focus" else break_sec
+        st.session_state.running = True
+        st.session_state.paused = False
+        st.session_state.start_requested = True
+        message_placeholder.success("⏲ 타이머만 초기화되었습니다. 타이머 중지 (리셋) 버튼을 다시 눌러주세요.")
+
 
 colL, colR = st.columns([1, 3])
 status_placeholder = st.empty()
@@ -187,7 +195,6 @@ def show_frame():
         elif cls_name == 'smartphone':
             st.session_state.phone_time += delta
             smartphone_detected = True
-
             if st.session_state.mode == "스마트폰 감지 시 알림":
                 now = time.time()
                 if now - st.session_state.last_alert_time > 5:
@@ -209,8 +216,9 @@ def show_frame():
 
 def update_timer_ui(duration):
     color = "blue" if st.session_state.cycle_type == "break" else "red"
+    html = draw_circle(st.session_state.time_left, duration, color)
     with container_timer:
-        components.html(draw_circle(st.session_state.time_left, duration, color), height=120)
+        components.v1.html(html, height=120)
 
 def run_timer(duration):
     if st.session_state.cycle_type == "focus":
@@ -218,44 +226,44 @@ def run_timer(duration):
         st.session_state.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         st.session_state.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 640)
         while not st.session_state.cap.isOpened():
-            pass
+            time.sleep(0.05)
         st.session_state.last_frame_time = time.time()
         st.session_state.startup_latency += time.time() - st.session_state.last_frame_time
 
+    prev_time = time.time()
+
     while st.session_state.time_left > 0:
+        now = time.time()
+        delta = now - prev_time
+
         if not st.session_state.running:
             update_timer_ui(duration)
-            time.sleep(0.1)
+            time.sleep(0.05)
             continue
 
         if st.session_state.cycle_type == "focus":
             show_frame()
-
-            # 모드별 타이머 로직
-            if st.session_state.mode == "폰 감지 시 정지지":
-                if st.session_state.smartphone_detected:
-                    st.session_state.time_left += 0
+            if delta >= 1:
+                if st.session_state.mode == "폰 감지 시 정지":
+                    if not st.session_state.smartphone_detected:
+                        st.session_state.time_left -= 1
+                elif st.session_state.mode == "펜만 감지 시 작동":
+                    if st.session_state.hand_with_pen_detected:
+                        st.session_state.time_left -= 1
                 else:
                     st.session_state.time_left -= 1
-
-            elif st.session_state.mode == "펜만 감지 시 작동":
-                if st.session_state.hand_with_pen_detected:
-                    st.session_state.time_left -= 1
-                else:
-                    st.session_state.time_left -= 0
-
-            else:  # 기본 / 알림 모드
-                st.session_state.time_left -= 1
-
+                prev_time = now
         else:
             container_video.markdown("💤 휴식 중입니다")
-            st.session_state.time_left -= 1
+            if delta >= 1:
+                st.session_state.time_left -= 1
+                prev_time = now
 
         st.session_state.time_left = max(0, st.session_state.time_left)
         update_timer_ui(duration)
-        status = f"{total_sets}세트 중 {st.session_state.set_index}세트 {('지비중' if st.session_state.cycle_type == 'focus' else '휴식중')}"
+        status = f"{total_sets}세트 중 {st.session_state.set_index}세트 {('집중' if st.session_state.cycle_type == 'focus' else '휴식중')}"
         status_text.subheader(status)
-        time.sleep(1)
+        time.sleep(0.01)
 
     if st.session_state.cap and st.session_state.cycle_type == "focus":
         st.session_state.cap.release()
@@ -303,7 +311,7 @@ if st.session_state.completed:
     st.markdown("### 🏁 결과 요약")
     st.markdown("#### 🟥 공부 시간 요약")
     st.table({
-        "카테고리": ["1. 펜 인식 시간", "2. 휴대폰 인식 시간", "3. 미탐지 시간", "4. 총 공부 시간"],
+        "카테고리": ["1. studying", "2. playing", "3. nothing", "4. 총 시간"],
         "값": [f"{pen_time:.1f}s", f"{phone_time:.1f}s", f"{neutral_time:.1f}s", f"{study_total:.1f}s"]
     })
     st.markdown("#### 🟦 휴식 시간 요약")
